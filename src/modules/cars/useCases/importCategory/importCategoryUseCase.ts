@@ -3,18 +3,52 @@ import fs from 'fs';
 
 import { ICategoriesRepository } from '../../repositories/ICategoriesRepository';
 
+interface IImportCategory {
+  name: string;
+  description: string;
+}
+
 class ImportCategoryUseCase {
   constructor(private categoriesRepository: ICategoriesRepository) {}
 
-  execute(file: any): void {
-    const stream = fs.createReadStream(file.path);
+  loadCategories(file: any): Promise<IImportCategory[]> {
+    return new Promise((resolve, reject) => {
+      const stream = fs.createReadStream(file.path);
+      const categories: IImportCategory[] = [];
 
-    const parseFile = parse();
+      const parseFile = parse();
 
-    stream.pipe(parseFile);
+      stream.pipe(parseFile);
 
-    parseFile.on('data', async line => {
-      console.log(line);
+      parseFile
+        .on('data', async line => {
+          const [name, description] = line;
+
+          categories.push({
+            name,
+            description,
+          });
+        })
+        .on('end', () => {
+          resolve(categories);
+        })
+        .on('error', err => {
+          reject(err);
+        });
+    });
+  }
+
+  async execute(file: any): Promise<void> {
+    const categories = await this.loadCategories(file);
+
+    categories.map(category => {
+      const { name, description } = category;
+
+      const existCategory = this.categoriesRepository.findByName(name);
+
+      if (!existCategory) {
+        this.categoriesRepository.create({ name, description });
+      }
     });
   }
 }
